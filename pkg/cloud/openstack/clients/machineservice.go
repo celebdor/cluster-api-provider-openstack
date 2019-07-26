@@ -384,7 +384,7 @@ func getImageID(is *InstanceService, imageName string) (string, error) {
 }
 
 // InstanceCreate creates a compute instance
-func (is *InstanceService) InstanceCreate(clusterName string, name string, clusterSpec *openstackconfigv1.OpenstackClusterProviderSpec, config *openstackconfigv1.OpenstackProviderSpec, cmd string, keyName string) (instance *Instance, err error) {
+func (is *InstanceService) InstanceCreate(clusterName string, name string, clusterSpec *openstackconfigv1.OpenstackClusterProviderSpec, config *openstackconfigv1.OpenstackProviderSpec, cmd string, keyName string, configClient configclient.ConfigV1Interface) (instance *Instance, err error) {
 	var createOpts servers.CreateOptsBuilder
 	if config == nil {
 		return nil, fmt.Errorf("create Options need be specified to create instace")
@@ -451,6 +451,13 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 			}
 		}
 	}
+
+	clusterInfra, err := configClient.Infrastructures().Get("cluster", metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to retrieve cluster Infrastructure object: %v", err)
+	}
+	allowedAddressPairs := []ports.AddressPair{ports.AddressPair{IPAddress: clusterInfra.Status.PlatformStatus.Openstack.IngressIP}}
+
 	userData := base64.StdEncoding.EncodeToString([]byte(cmd))
 	var ports_list []servers.Network
 	for _, net := range nets {
@@ -471,7 +478,7 @@ func (is *InstanceService) InstanceCreate(clusterName string, name string, clust
 		var port ports.Port
 		if len(portList) == 0 {
 			// create server port
-			port, err = CreatePort(is, name, net, &securityGroups)
+			port, err = CreatePort(is, name, net, &securityGroups, &allowedAddressPairs)
 			if err != nil {
 				return nil, fmt.Errorf("Failed to create port err: %v", err)
 			}
